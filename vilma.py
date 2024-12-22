@@ -596,61 +596,61 @@ class ViLMA:
             print("Invalid index. Capturing full desktop.")
             self.target_window = None
 
-    def terminal_menu(self):
-        """
-        Displays the terminal menu for user interaction.
-        """
-        print(Fore.CYAN + "\n=== Welcome to ViLMA (Vision-Language Model-based Active Monitoring) ===" + Style.RESET_ALL)
-        while True:
-            print(Fore.CYAN + "\n=== Menu ===" + Style.RESET_ALL)
+        def terminal_menu(self):
+            """
+            Displays the terminal menu for user interaction.
+            """
+            print(Fore.CYAN + "\n=== Welcome to ViLMA (Vision-Language Model-based Active Monitoring) ===" + Style.RESET_ALL)
+            while True:
+                print(Fore.CYAN + "\n=== Menu ===" + Style.RESET_ALL)
 
-            print(Fore.LIGHTGREEN_EX + "1. Start Screen Monitoring" + Style.RESET_ALL)
+                print(Fore.LIGHTGREEN_EX + "1. Start Screen Monitoring" + Style.RESET_ALL)
 
-            print(Fore.MAGENTA + "\nModel Operations:" + Style.RESET_ALL)
-            print(Fore.LIGHTMAGENTA_EX + "2. Load Florence-2" + Style.RESET_ALL)
+                print(Fore.MAGENTA + "\nModel Operations:" + Style.RESET_ALL)
+                print(Fore.LIGHTMAGENTA_EX + "2. Load Florence-2" + Style.RESET_ALL)
 
-            print(Fore.BLUE + "\nMonitoring Settings:" + Style.RESET_ALL)
-            print(Fore.LIGHTBLUE_EX + "3. Add Inference Prompt" + Style.RESET_ALL)
-            print(Fore.LIGHTBLUE_EX + "4. Remove Inference Prompt" + Style.RESET_ALL)
-            print(Fore.LIGHTBLUE_EX + "5. List Inference Prompts" + Style.RESET_ALL)
-            print(Fore.LIGHTBLUE_EX + "6. Set Inference Rate (current: " +
-                  (Fore.GREEN + str(self.inference_rate) if self.inference_rate else Fore.RED + "None") +
-                  Style.RESET_ALL + ")" + Style.RESET_ALL)
-            print(Fore.LIGHTBLUE_EX + "7. Toggle Processing Resolution (current: " +
-                  Fore.GREEN + self.resolution + Style.RESET_ALL + ")" + Style.RESET_ALL)
-            print(Fore.LIGHTBLUE_EX + "8. Set Target Window (current: " +
-                  (Fore.GREEN + self.target_window if self.target_window else Fore.RED + "Full Desktop") +
-                  Style.RESET_ALL + ")" + Style.RESET_ALL)
+                print(Fore.BLUE + "\nMonitoring Settings:" + Style.RESET_ALL)
+                print(Fore.LIGHTBLUE_EX + "3. Add Inference Prompt" + Style.RESET_ALL)
+                print(Fore.LIGHTBLUE_EX + "4. Remove Inference Prompt" + Style.RESET_ALL)
+                print(Fore.LIGHTBLUE_EX + "5. List Inference Prompts" + Style.RESET_ALL)
+                print(Fore.LIGHTBLUE_EX + "6. Set Inference Rate (current: " +
+                      (Fore.GREEN + str(self.inference_rate) if self.inference_rate else Fore.RED + "None") +
+                      Style.RESET_ALL + ")" + Style.RESET_ALL)
+                print(Fore.LIGHTBLUE_EX + "7. Toggle Processing Resolution (current: " +
+                      Fore.GREEN + self.resolution + Style.RESET_ALL + ")" + Style.RESET_ALL)
+                print(Fore.LIGHTBLUE_EX + "8. Set Target Window (current: " +
+                      (Fore.GREEN + self.target_window if self.target_window else Fore.RED + "Full Desktop") +
+                      Style.RESET_ALL + ")" + Style.RESET_ALL)
 
-            # CHANGED SECTION
-            print(Fore.GREEN + "\nToggles & Triggers:" + Style.RESET_ALL)
-            print(Fore.LIGHTGREEN_EX + "9.  Logout (current: " +
-                  (Fore.GREEN + "ON" if self.logout_on_trigger else Fore.RED + "OFF") +
-                  Style.RESET_ALL + ")" + Style.RESET_ALL)
-            print(Fore.LIGHTGREEN_EX + "10. Dummy Mode (current: " +
-                  (Fore.GREEN + "ON" if self.dummy_mode else Fore.RED + "OFF") +
-                  Style.RESET_ALL + ")" + Style.RESET_ALL)
-            print(Fore.LIGHTGREEN_EX + "11. Blank Screen (current: " +
-                  (Fore.GREEN + "ON" if self.blank_screen_on_trigger else Fore.RED + "OFF") +
-                  Style.RESET_ALL + ")" + Style.RESET_ALL)
-            print(Fore.LIGHTGREEN_EX + "12. Screenshot (current: " +
-                  (Fore.GREEN + "ON" if self.screenshot_on_trigger else Fore.RED + "OFF") +
-                  Style.RESET_ALL + ")" + Style.RESET_ALL)
-            print(Fore.LIGHTGREEN_EX + "13. Record (current: " +
-                  (Fore.GREEN + "ON" if self.record_on_trigger else Fore.RED + "OFF") +
-                  Style.RESET_ALL + ")" + Style.RESET_ALL)
-            print(Fore.LIGHTGREEN_EX + "14. Custom (current: " +
-                  (Fore.GREEN + "ON" if self.custom_trigger_enabled else Fore.RED + "OFF") +
-                  Style.RESET_ALL + ")" + Style.RESET_ALL)
-            print(Fore.LIGHTGREEN_EX + "15. Keyboard Command (current: " +
-                  (Fore.GREEN + "ON" if self.keyboard_trigger_enabled else Fore.RED + "OFF") +
-                  Style.RESET_ALL + ")" + Style.RESET_ALL)
+                # CHANGED SECTION
+                print(Fore.GREEN + "\nToggles & Triggers:" + Style.RESET_ALL)
+                print(Fore.LIGHTGREEN_EX + "9.  Logout (current: " +
+                      (Fore.GREEN + "ON" if self.logout_on_trigger else Fore.RED + "OFF") +
+                      Style.RESET_ALL + ")" + Style.RESET_ALL)
+                print(Fore.LIGHTGREEN_EX + "10. Dummy Mode (current: " +
+                      (Fore.GREEN + "ON" if self.dummy_mode else Fore.RED + "OFF") +
+                      Style.RESET_ALL + ")" + Style.RESET_ALL)
+                print(Fore.LIGHTGREEN_EX + "11. Blank Screen (current: " +
+                      (Fore.GREEN + "ON" if self.blank_screen_on_trigger else Fore.RED + "OFF") +
+                      Style.RESET_ALL + ")" + Style.RESET_ALL)
+                print(Fore.LIGHTGREEN_EX + "12. Screenshot (current: " +
+                      (Fore.GREEN + "ON" if self.screenshot_on_trigger else Fore.RED + "OFF") +
+                      Style.RESET_ALL + ")" + Style.RESET_ALL)
+                print(Fore.LIGHTGREEN_EX + "13. Record (current: " +
+                      (Fore.GREEN + "ON" if self.record_on_trigger else Fore.RED + "OFF") +
+                      Style.RESET_ALL + ")" + Style.RESET_ALL)
+                print(Fore.LIGHTGREEN_EX + "14. Custom (current: " +
+                      (Fore.GREEN + "ON" if self.custom_trigger_enabled else Fore.RED + "OFF") +
+                      Style.RESET_ALL + ")" + Style.RESET_ALL)
+                print(Fore.LIGHTGREEN_EX + "15. Keyboard Command (current: " +
+                      (Fore.GREEN + "ON" if self.keyboard_trigger_enabled else Fore.RED + "OFF") +
+                      Style.RESET_ALL + ")" + Style.RESET_ALL)
 
-            print(Fore.YELLOW + "\nGeneral:" + Style.RESET_ALL)
-            print(Fore.LIGHTYELLOW_EX + "16. Quit" + Style.RESET_ALL)
+                print(Fore.YELLOW + "\nGeneral:" + Style.RESET_ALL)
+                print(Fore.LIGHTYELLOW_EX + "16. Quit" + Style.RESET_ALL)
 
-            print(Fore.CYAN + "\n==========================" + Style.RESET_ALL)
-            choice = input("Enter your choice: ")
+                print(Fore.CYAN + "\n==========================" + Style.RESET_ALL)
+                choice = input("Enter your choice: ")
 
             try:
                 if choice == "1":
