@@ -32,6 +32,7 @@ class ViLMA:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = None
         self.processor = None
+
         self.prompts = []
         self.blank_window_open = False
         self.logout_on_trigger = False
@@ -42,17 +43,34 @@ class ViLMA:
         self.custom_trigger_path = None
         self.custom_trigger_enabled = False
         self.custom_trigger_output = "yes"
-        self.recording = False
+
+        # Replaced simple boolean with an Event for thread-safe recording control
+        self._recording_event = threading.Event()
+        self.current_video_filename = None
+        self.video_writer = None
+
         self.inference_rate = None
         self.resolution = "720p"
-        self.video_writer = None
+
         self.keyboard_trigger_enabled = False
         self.keyboard_trigger_sequence = ""
         self.keyboard_trigger_activated = False
         self.keyboard_trigger_output = "yes"
+
         self.target_window = None
 
+        # Ensure blank window is closed upon exit
         atexit.register(self.ensure_blank_window_closed)
+
+    @property
+    def is_recording(self):
+        """
+        Returns True if the recording thread is active (Event is *not* set),
+        and False if the thread has been signaled to stop (Event is set).
+        """
+        # _recording_event.clear() means "run/record",
+        # _recording_event.set() means "stop".
+        return not self._recording_event.is_set()
 
     def load_model(self, model_path):
         """
@@ -65,7 +83,12 @@ class ViLMA:
             RuntimeError: If there's an error loading the model.
         """
         try:
-            self.model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True).eval().to(self.device).half()
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_path, trust_remote_code=True
+            ).eval().to(self.device)
+            if self.device.type == "cuda":
+                self.model.half()
+
             self.processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
             print(Fore.GREEN + "Model loaded successfully." + Style.RESET_ALL)
         except Exception as e:
@@ -87,9 +110,10 @@ class ViLMA:
         """
         try:
             inputs = self.processor(text=task_prompt, images=image, return_tensors="pt").to(self.device)
-            for k, v in inputs.items():
-                if torch.is_floating_point(v):
-                    inputs[k] = v.half()
+            if self.device.type == "cuda":
+                for k, v in inputs.items():
+                    if torch.is_floating_point(v):
+                        inputs[k] = v.half()
             return inputs
         except Exception as e:
             raise RuntimeError(f"Error preparing inputs: {e}")
@@ -108,7 +132,7 @@ class ViLMA:
             RuntimeError: If there's an error running the model.
         """
         try:
-            with torch.amp.autocast("cuda"):
+            with torch.amp.autocast(device_type=self.device.type, enabled=(self.device.type=="cuda")):
                 generated_ids = self.model.generate(
                     input_ids=inputs["input_ids"],
                     pixel_values=inputs.get("pixel_values"),
@@ -163,6 +187,7 @@ class ViLMA:
             print(f"{timestamp} - Raw Inference result: {generated_text}")
             print(f"{timestamp} - Cleaned Inference result: {cleaned_text}")
 
+            # Check custom trigger
             if self.custom_trigger_enabled and self.custom_trigger_path:
                 print(f"{timestamp} - Checking custom trigger: '{self.custom_trigger_output.lower()}' in '{cleaned_text.lower()}'")
                 if self.custom_trigger_output.lower() in cleaned_text.lower():
@@ -172,11 +197,13 @@ class ViLMA:
                 else:
                     print(f"{timestamp} - Custom trigger did not match.")
 
-            if self.keyboard_trigger_enabled and self.keyboard_trigger_output.lower() in cleaned_text.lower() and not self.keyboard_trigger_activated:
+            # Check keyboard trigger
+            if self.keyboard_trigger_enabled and (self.keyboard_trigger_output.lower() in cleaned_text.lower()) and not self.keyboard_trigger_activated:
                 print(f"{timestamp} - Keyboard trigger matched. Running keyboard trigger.")
                 self.run_keyboard_trigger()
                 self.keyboard_trigger_activated = True
 
+            # If the text no longer contains the output, reset the activation
             if self.keyboard_trigger_output.lower() not in cleaned_text.lower():
                 self.keyboard_trigger_activated = False
 
@@ -198,7 +225,6 @@ class ViLMA:
         try:
             with mss.mss() as sct:
                 if self.target_window:
-                    # Capture specific window
                     window = pyautogui.getWindowsWithTitle(self.target_window)
                     if window:
                         window = window[0]
@@ -208,7 +234,6 @@ class ViLMA:
                         print(Fore.YELLOW + f"Window '{self.target_window}' not found. Capturing full desktop." + Style.RESET_ALL)
                         monitor = sct.monitors[1]
                 else:
-                    # Capture full desktop
                     monitor = sct.monitors[1]
 
                 screenshot = sct.grab(monitor)
@@ -223,50 +248,71 @@ class ViLMA:
         """
         try:
             screenshot = self.capture_desktop()
-            screenshot.save(f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
-            print(Fore.GREEN + "Screenshot taken." + Style.RESET_ALL)
+            filename = f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+            screenshot.save(filename)
+            print(Fore.GREEN + f"Screenshot taken: {filename}" + Style.RESET_ALL)
         except Exception as e:
             print(Fore.RED + f"Error taking screenshot: {e}" + Style.RESET_ALL)
 
     def start_recording(self):
         """
-        Starts recording the desktop or specified window.
+        Starts recording the desktop or specified window using a separate thread.
+        Only start if we're currently not recording (i.e., _recording_event is set).
         """
         try:
-            print(Fore.GREEN + "Recording started." + Style.RESET_ALL)
-            self.recording = True
+            # Clear the event so the thread runs
+            self._recording_event.clear()
+
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             width, height = self.get_resolution_dimensions()
-            self.video_writer = cv2.VideoWriter(f'recording_{datetime.now().strftime("%Y%m%d_%H%M%S")}.mp4', fourcc, 20.0, (width, height))
+            self.current_video_filename = f'recording_{datetime.now().strftime("%Y%m%d_%H%M%S")}.mp4'
 
-            threading.Thread(target=self.record_desktop).start()
+            self.video_writer = cv2.VideoWriter(self.current_video_filename, fourcc, 20.0, (width, height))
+            print(Fore.GREEN + f"Recording started. Output file: {self.current_video_filename}" + Style.RESET_ALL)
+            print(Fore.GREEN + f"Stored in directory: {os.getcwd()}" + Style.RESET_ALL)
+
+            record_thread = threading.Thread(target=self.record_desktop, daemon=True)
+            record_thread.start()
         except Exception as e:
             print(Fore.RED + f"Error starting recording: {e}" + Style.RESET_ALL)
 
     def record_desktop(self):
         """
-        Records the desktop screen or specified window.
+        Records the desktop screen or specified window in a loop until the event is set.
         """
         try:
             with mss.mss() as sct:
-                while self.recording:
-                    screenshot = self.capture_desktop()
+                while not self._recording_event.is_set():
+                    try:
+                        screenshot = self.capture_desktop()
+                    except Exception as capture_err:
+                        print(Fore.RED + f"Error capturing desktop while recording: {capture_err}" + Style.RESET_ALL)
+                        continue
+
                     frame = np.array(screenshot)
                     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                    self.video_writer.write(frame)
-                    time.sleep(1/20)
+
+                    if self.video_writer:
+                        self.video_writer.write(frame)
+
+                    time.sleep(1/20)  # ~20 FPS
         except Exception as e:
             print(Fore.RED + f"Error recording desktop: {e}" + Style.RESET_ALL)
+        finally:
+            if self.video_writer:
+                self.video_writer.release()
+                self.video_writer = None
+            print(Fore.GREEN + "Recording thread has exited." + Style.RESET_ALL)
 
     def stop_recording(self):
         """
-        Stops recording the desktop or specified window.
+        Stops recording the desktop or specified window, if currently recording.
         """
         try:
-            self.recording = False
-            self.video_writer.release()
-            self.video_writer = None
-            print(Fore.GREEN + "Recording stopped." + Style.RESET_ALL)
+            # Set the event so the thread stops
+            if self.is_recording:
+                self._recording_event.set()
+                print(Fore.GREEN + f"Recording stop requested. Final file: {self.current_video_filename}" + Style.RESET_ALL)
         except Exception as e:
             print(Fore.RED + f"Error stopping recording: {e}" + Style.RESET_ALL)
 
@@ -342,7 +388,7 @@ class ViLMA:
             system_platform = platform.system()
             if system_platform == "Windows":
                 subprocess.run(["shutdown", "/l"], check=True)
-            elif system_platform == "Linux" or system_platform == "Darwin":
+            elif system_platform in ("Linux", "Darwin"):
                 subprocess.run(["pkill", "-KILL", "-u", os.getlogin()], check=True)
             else:
                 print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Unsupported operating system: {system_platform}")
@@ -365,15 +411,25 @@ class ViLMA:
         try:
             while True:
                 start_time = time.time()
-                screen = self.capture_desktop()
+                try:
+                    screen = self.capture_desktop()
+                except RuntimeError as cap_err:
+                    print(Fore.RED + f"Error capturing desktop: {cap_err}" + Style.RESET_ALL)
+                    time.sleep(1)  # Sleep briefly to avoid rapid looping on errors
+                    continue
+
+                # Convert and resize
                 screen_rgb = screen.convert("RGB")
                 screen_np = np.array(screen_rgb)
                 width, height = self.get_resolution_dimensions()
                 screen_resized = cv2.resize(screen_np, (width, height))
                 pil_image = Image.fromarray(screen_resized)
 
+                # Run each prompt
                 for prompt in self.prompts:
                     result = self.run_inference(pil_image, prompt)
+
+                    # 1) If "yes" => start recording if not already
                     if result.lower() == "yes" and not self.dummy_mode:
                         if self.logout_on_trigger:
                             print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Trigger detected, logging out")
@@ -382,21 +438,43 @@ class ViLMA:
                         if self.blank_screen_on_trigger and not self.blank_window_open:
                             print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Trigger detected, opening blank window")
                             self.show_blank_window()
-                    elif result.lower() == "no" and self.blank_window_open:
-                        print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - No trigger detected, closing blank window")
-                        self.ensure_blank_window_closed()
 
+                        if self.screenshot_on_trigger:
+                            self.take_screenshot()
+
+                        # If recording is toggled on, start only once
+                        if self.record_on_trigger and not self.is_recording:
+                            self.start_recording()
+
+                    # 2) If "no" => stop blank window and any ongoing recording
+                    elif result.lower() == "no":
+                        if self.blank_window_open:
+                            print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - No trigger detected, closing blank window")
+                            self.ensure_blank_window_closed()
+
+                        # Stop the recording if it's running
+                        if self.record_on_trigger and self.is_recording:
+                            self.stop_recording()
+
+                # Rate limiting
                 elapsed_time = time.time() - start_time
                 if self.inference_rate:
                     time_to_wait = max(1.0 / self.inference_rate - elapsed_time, 0)
                     time.sleep(time_to_wait)
 
+                # Check for user exit
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
+
         except Exception as e:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f"{timestamp} - Error during monitoring: {e}")
+        finally:
+            # Clean up any open blank window on exit
             self.ensure_blank_window_closed()
+            # Also stop recording if ongoing
+            if self.is_recording:
+                self.stop_recording()
 
     def get_resolution_dimensions(self):
         """
@@ -590,6 +668,7 @@ class ViLMA:
         print(Fore.CYAN + "\nCurrent inference prompts:" + Style.RESET_ALL)
         for i, prompt in enumerate(self.prompts, 1):
             print(Fore.GREEN + f"{i}. {prompt}" + Style.RESET_ALL)
+
 
 def select_model_path():
     """
